@@ -16,7 +16,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.linear_model import Ridge
 from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
 from sklearn.model_selection import LeaveOneOut
 from sklearn.metrics import r2_score, mean_squared_error
@@ -185,7 +184,6 @@ def load_data_and_train_model():
     candidates = {}
     candidates['RF'] = RandomForestRegressor(n_estimators=200, max_depth=12, min_samples_split=2, min_samples_leaf=1, random_state=42)
     candidates['GBR'] = GradientBoostingRegressor(n_estimators=200, max_depth=6, learning_rate=0.1, min_samples_split=2, random_state=42)
-    candidates['Ridge'] = Ridge(alpha=1.0, random_state=42)
     if XGB_AVAILABLE:
         candidates['XGB'] = XGBRegressor(n_estimators=200, max_depth=6, learning_rate=0.1, random_state=42, verbosity=0)
     if LGBM_AVAILABLE:
@@ -336,7 +334,7 @@ with st.sidebar:
     st.markdown("### 🎯 功能菜单")
     page = st.radio(
         "",
-        ["🏠 首页", "🏭 双碳背景", "🔍 碳足迹预测", "🔄 逆向优化", "📊 SHAP分析", "📂 批量预测"],
+        ["🏠 首页", "📖 项目背景", "🔍 碳足迹预测", "🔄 逆向优化", "📊 SHAP分析", "📂 批量预测"],
         index=0, label_visibility="collapsed"
     )
 
@@ -365,8 +363,8 @@ if page == "🏠 首页":
 
     f1, f2 = st.columns(2)
     with f1:
-        st.markdown("""<div class="feature-card"><h4>🏭 双碳背景</h4>
-            <p style="color:#666;">系统阐述碳足迹、双碳目标及LCA方法论，展示项目与竞赛主题的契合度。</p></div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="feature-card"><h4>📖 项目背景</h4>
+            <p style="color:#666;">系统阐述碳足迹、双碳目标及LCA方法论，展示项目的研究价值与应用前景。</p></div>""", unsafe_allow_html=True)
     with f2:
         st.markdown("""<div class="feature-card"><h4>🔍 碳足迹预测</h4>
             <p style="color:#666;">输入产品参数，实时预测碳足迹，通过SHAP解释特征贡献。</p></div>""", unsafe_allow_html=True)
@@ -387,22 +385,22 @@ if page == "🏠 首页":
         st.dataframe(df[['source','product','unit','boundary','allocation','material','electricity','heat','carbon_footprint']], use_container_width=True, height=260)
 
 # ============================================================
-# 页面2 - 双碳背景
+# 页面2 - 项目背景
 # ============================================================
-elif page == "🏭 双碳背景":
+elif page == "📖 项目背景":
     st.markdown("""
     <div class="hero-card">
-        <h1>🏭 双碳背景与项目契合度</h1>
-        <p>碳足迹核算 · 机器学习 · 双碳目标 —— 项目价值与竞赛主题的深度契合</p>
+        <h1>📖 项目背景：双碳目标下的碳足迹智能核算</h1>
+        <p>碳足迹核算 · 机器学习 · 生命周期评价 —— 研究背景、方法论与项目价值</p>
     </div>""", unsafe_allow_html=True)
 
     st.markdown('<p class="section-title">🌍 一、双碳目标背景</p>', unsafe_allow_html=True)
     st.markdown("""
     <div class="context-card">
     <h3>🇨🇳 中国"双碳"目标</h3>
-    <p><b>2030年前碳达峰</b>、<b>2060年前碳中和</b>，是以习近平同志为核心的党中央作出的重大战略决策，
-    也是实现中华民族永续发展的必然选择。</p>
-    <p>工业领域碳排放占全社会总排放的 <b>70%以上</b>，是实现双碳目标的关键主战场。
+    <p><b>2030年前碳达峰</b>、<b>2060年前碳中和</b>，是我国应对气候变化、推动高质量发展的重要战略决策，
+    也是实现可持续发展的必然选择。</p>
+    <p>工业领域碳排放占全社会总排放的 <b>70%以上</b>，是实现双碳目标的关键领域。
     产品层面的碳足迹核算是工业减排的基础和前提。</p>
     </div>""", unsafe_allow_html=True)
 
@@ -435,12 +433,12 @@ elif page == "🏭 双碳背景":
         <li>🔄 <b>逆向优化</b>：设定低碳目标，自动反推最优工艺参数</li>
         <li>📚 <b>多行业覆盖</b>：电解铝、农药、玻璃、炼油、电池、屠宰、船舶等</li></ul></div>""", unsafe_allow_html=True)
 
-    st.markdown('<p class="section-title">🎯 五、与竞赛主题的契合</p>', unsafe_allow_html=True)
-    st.markdown("""<div class="highlight-box"><h3>✅ 紧扣"双碳"主题</h3>
-        <p><b>1. 政策契合</b>：响应国家双碳战略，聚焦工业领域碳减排核心需求</p>
+    st.markdown('<p class="section-title">🎯 五、项目价值与应用前景</p>', unsafe_allow_html=True)
+    st.markdown("""<div class="highlight-box"><h3>✅ 研究价值与意义</h3>
+        <p><b>1. 政策响应</b>：对接国家双碳战略，聚焦工业领域碳减排核心需求</p>
         <p><b>2. 方法创新</b>：将机器学习引入传统LCA领域，实现方法学突破</p>
         <p><b>3. 实用价值</b>：为企业提供低成本碳足迹核算工具，助力绿色转型</p>
-        <p><b>4. 技术深度</b>：集成LOOCV、SHAP可解释性、逆向优化等先进方法</p></div>""", unsafe_allow_html=True)
+        <p><b>4. 技术深度</b>：集成LOOCV交叉验证、SHAP可解释性、逆向优化等先进方法</p></div>""", unsafe_allow_html=True)
 
     st.markdown('<p class="section-title">📊 六、研究数据概览</p>', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
