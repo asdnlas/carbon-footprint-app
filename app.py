@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 # ============================================================
 # 智能碳足迹核算与逆向优化平台（Streamlit Web应用）
-# 双碳竞赛 - 机器学习 × 产品碳足迹核算
+# 基于机器学习的产品碳足迹智能预测与优化系统
+# 核心：生产过程特征 + LCA方法论 + 机器学习
 # 兼容本地(Windows)和云端(Linux Streamlit Community Cloud)
 # ============================================================
 # 运行方式：
@@ -65,10 +66,23 @@ plt.rcParams['axes.unicode_minus'] = False
 def T(cn, en):
     return cn if CHINESE_FONT_OK else en
 
-FEATURE_CN_CORE = ['原材料消耗(kg)', '电力消耗(kWh)', '热力/燃料消耗', '运输(tkm)',
-                   '核算边界类型', '分配方法类型', '行业来源', '产品类型', '产品单位']
+# ============================================================
+# 核心特征定义（生产过程导向）
+# ============================================================
+# 数值特征：生产消耗数据
+NUMERIC_FEATURES = ['原材料消耗(kg)', '电力消耗(kWh)', '热力/燃料消耗', '运输(tkm)']
+NUMERIC_COLS = ['material', 'electricity', 'heat', 'transport']
+
+# 分类特征：核算方法 + 生产过程
+CATEGORICAL_FEATURES = ['核算边界类型', '分配方法类型', '生产工艺类型', '主要碳排放源']
+CATEGORICAL_COLS = ['boundary', 'allocation', 'process_type', 'emission_source']
+
+# 全部核心特征（8维）
+FEATURE_CN_CORE = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 FEATURE_EN_CORE = ['Material(kg)', 'Electricity(kWh)', 'Heat/Fuel', 'Transport(tkm)',
-                   'Boundary Type', 'Allocation Method', 'Industry Source', 'Product Type', 'Unit']
+                   'Boundary', 'Allocation', 'Process Type', 'Emission Source']
+
+N_CORE = len(FEATURE_CN_CORE)  # 8
 
 # ============================================================
 # 页面配置
@@ -124,54 +138,111 @@ st.markdown("""
 # ============================================================
 @st.cache_resource(show_spinner=False)
 def load_data_and_train_model():
+    # 生产过程特征数据（重新标注）
+    # process_type: 生产工艺类型
+    #   - 电解工艺：通过电解还原/氧化金属的工艺
+    #   - 化学合成：通过化学反应合成产品
+    #   - 物理加工：物理成型、蒸馏等工艺
+    #   - 电化学加工：电池制造等
+    #   - 食品加工：屠宰、食品处理
+    #   - 造船工艺：船舶建造
+    #   - 玻璃制造：玻璃熔制与成型
+    # emission_source: 主要碳排放源
+    #   - 电力驱动：电力消耗为主
+    #   - 燃料燃烧：热力/燃料消耗为主
+    #   - 化学反应：化学反应碳排放
+    #   - 原料隐含：原材料隐含碳为主
     data = [
-        {"source": "电解铝_马梦霞", "product": "氧化铝", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "物理法", "material": None, "electricity": None, "heat": None, "transport": None, "carbon_footprint": 2030},
-        {"source": "电解铝_马梦霞", "product": "预焙阳极", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "物理法", "material": None, "electricity": None, "heat": None, "transport": None, "carbon_footprint": 1367},
-        {"source": "电解铝_马梦霞", "product": "电解铝", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "物理法", "material": 1920, "electricity": 15500, "heat": None, "transport": None, "carbon_footprint": 14302},
-        {"source": "草甘膦_彭子豪", "product": "草甘膦原药", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "经济价值法", "material": 320, "electricity": 9127, "heat": 18550, "transport": None, "carbon_footprint": 12520},
-        {"source": "草甘膦_彭子豪", "product": "草甘膦原药", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "质量法", "material": 320, "electricity": 9127, "heat": 18550, "transport": None, "carbon_footprint": 3120},
-        {"source": "草甘膦_彭子豪", "product": "草甘膦原药", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "化学计量法", "material": 320, "electricity": 9127, "heat": 18550, "transport": None, "carbon_footprint": 4880},
-        {"source": "玻璃瓶罐_四川天马", "product": "玻璃瓶罐", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "物理法", "material": 620, "electricity": 203, "heat": 185.8, "transport": None, "carbon_footprint": 926},
-        {"source": "炼厂_张梦研", "product": "常顶油", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "质量法", "material": None, "electricity": None, "heat": None, "transport": None, "carbon_footprint": 10.32},
-        {"source": "炼厂_张梦研", "product": "常顶油", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "热值法", "material": None, "electricity": None, "heat": None, "transport": None, "carbon_footprint": 11.09},
-        {"source": "炼厂_张梦研", "product": "减顶气(未换热)", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "烟值法", "material": None, "electricity": None, "heat": None, "transport": None, "carbon_footprint": 29.22},
-        {"source": "炼厂_张梦研", "product": "渣油(大量换热)", "unit": "1 t", "boundary": "摇篮到大门", "allocation": "烟值法", "material": None, "electricity": None, "heat": None, "transport": None, "carbon_footprint": 10.05},
-        {"source": "南孚电池", "product": "碱性锌锰电池", "unit": "1 万只", "boundary": "摇篮到大门", "allocation": "物理法", "material": 39023, "electricity": 36639562, "heat": 379963, "transport": None, "carbon_footprint": 125.85},
-        {"source": "肉鸡屠宰_樊庆锌", "product": "屠宰场(建设期)", "unit": "1 座", "boundary": "摇篮到大门", "allocation": "物理法", "material": None, "electricity": 906577, "heat": 55, "transport": None, "carbon_footprint": 7455000},
-        {"source": "肉鸡屠宰_樊庆锌", "product": "屠宰场(运营期)", "unit": "1 年产量", "boundary": "摇篮到大门", "allocation": "物理法", "material": None, "electricity": 906577, "heat": 55, "transport": None, "carbon_footprint": 944810},
-        {"source": "船舶_韩子诺", "product": "散货船(运输阶段)", "unit": "1 艘", "boundary": "摇篮到大门", "allocation": "物理法", "material": None, "electricity": None, "heat": 1836, "transport": None, "carbon_footprint": 178094000},
-        {"source": "船舶_韩子诺", "product": "散货船(原材料阶段)", "unit": "1 艘", "boundary": "摇篮到大门", "allocation": "物理法", "material": 6399, "electricity": None, "heat": None, "transport": None, "carbon_footprint": 22416000},
+        # 电解铝行业
+        {"material": 0, "electricity": 0, "heat": 0, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "物理法",
+         "process_type": "电解工艺", "emission_source": "电力驱动", "carbon_footprint": 2030},
+        {"material": 0, "electricity": 0, "heat": 0, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "物理法",
+         "process_type": "电解工艺", "emission_source": "电力驱动", "carbon_footprint": 1367},
+        {"material": 1920, "electricity": 15500, "heat": 0, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "物理法",
+         "process_type": "电解工艺", "emission_source": "电力驱动", "carbon_footprint": 14302},
+
+        # 草甘膦农药
+        {"material": 320, "electricity": 9127, "heat": 18550, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "经济价值法",
+         "process_type": "化学合成", "emission_source": "燃料燃烧", "carbon_footprint": 12520},
+        {"material": 320, "electricity": 9127, "heat": 18550, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "质量法",
+         "process_type": "化学合成", "emission_source": "燃料燃烧", "carbon_footprint": 3120},
+        {"material": 320, "electricity": 9127, "heat": 18550, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "化学计量法",
+         "process_type": "化学合成", "emission_source": "燃料燃烧", "carbon_footprint": 4880},
+
+        # 玻璃瓶罐
+        {"material": 620, "electricity": 203, "heat": 185.8, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "物理法",
+         "process_type": "玻璃制造", "emission_source": "燃料燃烧", "carbon_footprint": 926},
+
+        # 炼油
+        {"material": 0, "electricity": 0, "heat": 0, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "质量法",
+         "process_type": "物理加工", "emission_source": "化学反应", "carbon_footprint": 10.32},
+        {"material": 0, "electricity": 0, "heat": 0, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "热值法",
+         "process_type": "物理加工", "emission_source": "化学反应", "carbon_footprint": 11.09},
+        {"material": 0, "electricity": 0, "heat": 0, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "烟值法",
+         "process_type": "物理加工", "emission_source": "化学反应", "carbon_footprint": 29.22},
+        {"material": 0, "electricity": 0, "heat": 0, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "烟值法",
+         "process_type": "物理加工", "emission_source": "化学反应", "carbon_footprint": 10.05},
+
+        # 南孚电池
+        {"material": 39023, "electricity": 36639562, "heat": 379963, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "物理法",
+         "process_type": "电化学加工", "emission_source": "电力驱动", "carbon_footprint": 125.85},
+
+        # 肉鸡屠宰
+        {"material": 0, "electricity": 906577, "heat": 55, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "物理法",
+         "process_type": "食品加工", "emission_source": "电力驱动", "carbon_footprint": 7455000},
+        {"material": 0, "electricity": 906577, "heat": 55, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "物理法",
+         "process_type": "食品加工", "emission_source": "电力驱动", "carbon_footprint": 944810},
+
+        # 船舶
+        {"material": 0, "electricity": 0, "heat": 1836, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "物理法",
+         "process_type": "造船工艺", "emission_source": "燃料燃烧", "carbon_footprint": 178094000},
+        {"material": 6399, "electricity": 0, "heat": 0, "transport": 0,
+         "boundary": "摇篮到大门", "allocation": "物理法",
+         "process_type": "造船工艺", "emission_source": "原料隐含", "carbon_footprint": 22416000},
     ]
+
     df = pd.DataFrame(data)
 
-    categorical_cols = ['boundary', 'allocation', 'source', 'product', 'unit']
-    numeric_cols = ['material', 'electricity', 'heat', 'transport']
-    for col in categorical_cols:
+    # 填充缺失值
+    for col in CATEGORICAL_COLS:
         df[col] = df[col].fillna('未知')
-    for col in numeric_cols:
+    for col in NUMERIC_COLS:
         md = df[col].median()
         df[col] = df[col].fillna(0 if pd.isna(md) else md)
 
+    # 标签编码
     label_encoders = {}
-    for col in categorical_cols:
+    for col in CATEGORICAL_COLS:
         le = LabelEncoder()
         df[col + '_encoded'] = le.fit_transform(df[col].astype(str))
         label_encoders[col] = le
 
-    # 核心9维特征
-    feature_cols_core = ['material', 'electricity', 'heat', 'transport',
-                         'boundary_encoded', 'allocation_encoded',
-                         'source_encoded', 'product_encoded', 'unit_encoded']
+    # 构建特征矩阵
+    feature_cols_core = NUMERIC_COLS + [c + '_encoded' for c in CATEGORICAL_COLS]
     X_core = df[feature_cols_core].copy()
     X_core.columns = FEATURE_CN_CORE
 
-    # 多项式特征
-    num_cols_cn = ['原材料消耗(kg)', '电力消耗(kWh)', '热力/燃料消耗', '运输(tkm)']
-    X_num = X_core[num_cols_cn].copy()
+    # 多项式特征（仅对数值特征）
+    X_num = X_core[NUMERIC_FEATURES].copy()
     poly = PolynomialFeatures(degree=2, include_bias=False, interaction_only=False)
     X_poly = poly.fit_transform(X_num)
 
-    # 合并
+    # 合并核心特征 + 多项式特征
     X_full = np.hstack([X_core.values, X_poly])
 
     y = df['carbon_footprint'].copy()
@@ -253,9 +324,9 @@ def load_data_and_train_model():
 
     core_imp = None
     if feat_importance is not None:
-        core_imp = feat_importance[:len(FEATURE_CN_CORE)]
+        core_imp = feat_importance[:N_CORE]
     elif mean_abs_shap is not None:
-        core_imp = mean_abs_shap[:len(FEATURE_CN_CORE)]
+        core_imp = mean_abs_shap[:N_CORE]
 
     return dict(
         model=final_model, df=df, X_core=X_core, X_full=X_full,
@@ -266,7 +337,7 @@ def load_data_and_train_model():
         r2_log=r2_log, rmse_log=rmse_log, r2_ori=r2_ori, rmse_ori=rmse_ori,
         shap_values=shap_values, mean_abs_shap=mean_abs_shap,
         use_shap=use_shap, feat_importance=feat_importance, core_imp=core_imp,
-        poly=poly, num_cols_cn=num_cols_cn
+        poly=poly, num_cols_cn=NUMERIC_FEATURES
     )
 
 
@@ -301,12 +372,11 @@ core_imp = model_data['core_imp']
 poly = model_data['poly']
 num_cols_cn = model_data['num_cols_cn']
 
+# 获取选项
 boundary_options = label_encoders['boundary'].classes_.tolist()
 allocation_options = label_encoders['allocation'].classes_.tolist()
-source_options = label_encoders['source'].classes_.tolist()
-product_options = label_encoders['product'].classes_.tolist()
-unit_options = label_encoders['unit'].classes_.tolist()
-N_CORE = len(feature_names_cn)
+process_type_options = label_encoders['process_type'].classes_.tolist()
+emission_source_options = label_encoders['emission_source'].classes_.tolist()
 
 # ============================================================
 # 侧边栏
@@ -327,14 +397,14 @@ with st.sidebar:
 
     st.markdown("### 🔧 模型配置")
     st.markdown(f"- 最优算法: **{best_model_name}**")
-    st.markdown(f"- 核心特征: {N_CORE}维 + 多项式")
+    st.markdown(f"- 核心特征: {N_CORE}维(数值+生产过程) + 多项式")
     st.markdown(f"- 评估: LOOCV ({len(df)}样本)")
 
     st.markdown("---")
     st.markdown("### 🎯 功能菜单")
     page = st.radio(
         "",
-        ["🏠 首页", "📖 项目背景", "🔍 碳足迹预测", "🔄 逆向优化", "📊 SHAP分析", "📂 批量预测"],
+        ["🏠 首页", "🔍 碳足迹预测", "🔄 逆向优化", "📊 SHAP分析", "📂 批量预测"],
         index=0, label_visibility="collapsed"
     )
 
@@ -345,7 +415,7 @@ if page == "🏠 首页":
     st.markdown("""
     <div class="hero-card">
         <h1>🌿 智能碳足迹核算与逆向优化平台</h1>
-        <p>基于机器学习的产品碳足迹智能预测与优化系统 · 助力双碳目标</p>
+        <p>基于机器学习的产品碳足迹智能预测与优化系统 · 生产过程建模 · 助力双碳目标</p>
     </div>""", unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)
@@ -363,18 +433,18 @@ if page == "🏠 首页":
 
     f1, f2 = st.columns(2)
     with f1:
-        st.markdown("""<div class="feature-card"><h4>📖 项目背景</h4>
-            <p style="color:#666;">系统阐述碳足迹、双碳目标及LCA方法论，展示项目的研究价值与应用前景。</p></div>""", unsafe_allow_html=True)
-    with f2:
         st.markdown("""<div class="feature-card"><h4>🔍 碳足迹预测</h4>
-            <p style="color:#666;">输入产品参数，实时预测碳足迹，通过SHAP解释特征贡献。</p></div>""", unsafe_allow_html=True)
+            <p style="color:#666;">输入生产过程参数（工艺类型、能耗、物料消耗），实时预测产品碳足迹。</p></div>""", unsafe_allow_html=True)
+    with f2:
+        st.markdown("""<div class="feature-card"><h4>🔄 逆向优化</h4>
+            <p style="color:#666;">设定碳足迹目标，反推最优生产参数组合，为低碳工艺设计提供决策支持。</p></div>""", unsafe_allow_html=True)
     f3, f4 = st.columns(2)
     with f3:
-        st.markdown("""<div class="feature-card"><h4>🔄 逆向优化</h4>
-            <p style="color:#666;">设定碳足迹目标，反推最优参数组合，为低碳工艺设计提供决策支持。</p></div>""", unsafe_allow_html=True)
-    with f4:
         st.markdown("""<div class="feature-card"><h4>📊 SHAP分析</h4>
-            <p style="color:#666;">基于SHAP值的可解释性分析，揭示碳足迹关键影响因子。</p></div>""", unsafe_allow_html=True)
+            <p style="color:#666;">基于SHAP值的可解释性分析，揭示生产过程各参数对碳足迹的影响程度。</p></div>""", unsafe_allow_html=True)
+    with f4:
+        st.markdown("""<div class="feature-card"><h4>📂 批量预测</h4>
+            <p style="color:#666;">上传数据文件，批量预测多条生产场景的碳足迹，支持CSV/Excel格式。</p></div>""", unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown('<p class="section-title">🏆 模型对比</p>', unsafe_allow_html=True)
@@ -382,119 +452,62 @@ if page == "🏠 首页":
     st.markdown(f"*最优模型: **{best_model_name}** (LOOCV R²={r2_log:.4f})*")
 
     with st.expander("📋 训练数据详情"):
-        st.dataframe(df[['source','product','unit','boundary','allocation','material','electricity','heat','carbon_footprint']], use_container_width=True, height=260)
+        st.dataframe(df[['process_type','emission_source','boundary','allocation','material','electricity','heat','carbon_footprint']], use_container_width=True, height=260)
 
 # ============================================================
-# 页面2 - 项目背景
-# ============================================================
-elif page == "📖 项目背景":
-    st.markdown("""
-    <div class="hero-card">
-        <h1>📖 项目背景：双碳目标下的碳足迹智能核算</h1>
-        <p>碳足迹核算 · 机器学习 · 生命周期评价 —— 研究背景、方法论与项目价值</p>
-    </div>""", unsafe_allow_html=True)
-
-    st.markdown('<p class="section-title">🌍 一、双碳目标背景</p>', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="context-card">
-    <h3>🇨🇳 中国"双碳"目标</h3>
-    <p><b>2030年前碳达峰</b>、<b>2060年前碳中和</b>，是我国应对气候变化、推动高质量发展的重要战略决策，
-    也是实现可持续发展的必然选择。</p>
-    <p>工业领域碳排放占全社会总排放的 <b>70%以上</b>，是实现双碳目标的关键领域。
-    产品层面的碳足迹核算是工业减排的基础和前提。</p>
-    </div>""", unsafe_allow_html=True)
-
-    st.markdown('<p class="section-title">📖 二、碳足迹与LCA方法论</p>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("""<div class="context-card"><h3>🔬 什么是碳足迹？</h3>
-            <p>碳足迹（Carbon Footprint）指一个产品在其生命周期阶段产生的温室气体排放总量，以 <b>kgCO₂e</b> 表示。</p>
-            <p>碳足迹核算是识别减排机会、评估减排成效、推进绿色低碳发展的重要工具。</p></div>""", unsafe_allow_html=True)
-    with c2:
-        st.markdown("""<div class="context-card"><h3>📊 LCA生命周期评价</h3>
-            <p>生命周期评价（LCA）是ISO 14040确立的碳足迹核算标准方法：</p>
-            <ul><li><b>目标与范围定义</b> — 确定核算边界</li>
-            <li><b>清单分析</b> — 收集资源能源消耗数据</li>
-            <li><b>影响评价</b> — 计算碳足迹</li>
-            <li><b>结果解释</b> — 识别减排热点</li></ul></div>""", unsafe_allow_html=True)
-
-    st.markdown('<p class="section-title">⚠️ 三、行业痛点与挑战</p>', unsafe_allow_html=True)
-    st.markdown("""<div class="context-card"><h3>💡 传统LCA方法的局限</h3>
-        <ul><li><b>数据获取困难</b>：企业生产数据不完整，很多环节缺乏实测数据</li>
-        <li><b>核算成本高昂</b>：专业LCA咨询费用高，中小企业难以承担</li>
-        <li><b>周期长</b>：一个产品的LCA核算通常需要数月时间</li>
-        <li><b>无法实时优化</b>：传统方法只能事后核算，无法指导工艺调整</li></ul></div>""", unsafe_allow_html=True)
-
-    st.markdown('<p class="section-title">🚀 四、项目创新与价值</p>', unsafe_allow_html=True)
-    st.markdown("""<div class="success-box"><h3>✨ 本项目如何解决上述痛点？</h3>
-        <p>本项目创新性地将<b>机器学习</b>与<b>碳足迹核算</b>相结合，提供<b>低成本、快速、可解释</b>的碳足迹预测方法：</p>
-        <ul><li>🎯 <b>智能预测</b>：仅需常规生产参数即可预测碳足迹</li>
-        <li>🔍 <b>可解释性分析</b>：SHAP特征重要性揭示关键驱动因子</li>
-        <li>🔄 <b>逆向优化</b>：设定低碳目标，自动反推最优工艺参数</li>
-        <li>📚 <b>多行业覆盖</b>：电解铝、农药、玻璃、炼油、电池、屠宰、船舶等</li></ul></div>""", unsafe_allow_html=True)
-
-    st.markdown('<p class="section-title">🎯 五、项目价值与应用前景</p>', unsafe_allow_html=True)
-    st.markdown("""<div class="highlight-box"><h3>✅ 研究价值与意义</h3>
-        <p><b>1. 政策响应</b>：对接国家双碳战略，聚焦工业领域碳减排核心需求</p>
-        <p><b>2. 方法创新</b>：将机器学习引入传统LCA领域，实现方法学突破</p>
-        <p><b>3. 实用价值</b>：为企业提供低成本碳足迹核算工具，助力绿色转型</p>
-        <p><b>4. 技术深度</b>：集成LOOCV交叉验证、SHAP可解释性、逆向优化等先进方法</p></div>""", unsafe_allow_html=True)
-
-    st.markdown('<p class="section-title">📊 六、研究数据概览</p>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(f'<div class="metric-card"><div class="metric-value">{len(df)}</div><div class="metric-label">样本量</div></div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-value">{len(source_options)}</div><div class="metric-label">行业数</div></div>', unsafe_allow_html=True)
-    with c3:
-        st.markdown(f'<div class="metric-card"><div class="metric-value">{r2_log:.3f}</div><div class="metric-label">LOOCV R²</div></div>', unsafe_allow_html=True)
-    with c4:
-        st.markdown(f'<div class="metric-card"><div class="metric-value">{best_model_name}</div><div class="metric-label">最优模型</div></div>', unsafe_allow_html=True)
-
-    industry_counts = df['source'].value_counts().reset_index()
-    industry_counts.columns = ['行业来源', '样本数']
-    st.dataframe(industry_counts, use_container_width=True, hide_index=True)
-
-# ============================================================
-# 页面3 - 碳足迹预测
+# 页面2 - 碳足迹预测
 # ============================================================
 elif page == "🔍 碳足迹预测":
     st.markdown('<p class="section-title">🔍 碳足迹智能预测</p>', unsafe_allow_html=True)
-    st.markdown("输入产品生产参数，基于机器学习模型预测碳足迹（kgCO₂e/单位）")
+    st.markdown("输入**生产过程参数**，基于机器学习模型预测碳足迹（kgCO₂e）")
     st.markdown("---")
 
     cl, cr = st.columns([1, 1])
     with cl:
-        st.markdown("### 📝 参数输入")
+        st.markdown("### 📝 生产过程参数输入")
         st.markdown('<div class="nav-box">', unsafe_allow_html=True)
-        material = st.number_input("原材料消耗 (kg)", min_value=0.0, value=1000.0, step=100.0)
-        electricity = st.number_input("电力消耗 (kWh)", min_value=0.0, value=10000.0, step=1000.0)
-        heat = st.number_input("热力/燃料消耗", min_value=0.0, value=5000.0, step=500.0)
-        transport = st.number_input("运输 (tkm)", min_value=0.0, value=50.0, step=10.0)
+
+        # 生产过程特征
+        st.markdown("#### 🏭 生产过程")
+        c1, c2 = st.columns(2)
+        with c1:
+            process_sel = st.selectbox("生产工艺类型", process_type_options,
+                                       help="产品采用的主要生产工艺类型")
+        with c2:
+            emission_sel = st.selectbox("主要碳排放源", emission_source_options,
+                                        help="该产品的主要碳排放来源")
+
+        # 核算方法特征
+        st.markdown("#### 📊 核算方法")
         c1, c2 = st.columns(2)
         with c1:
             boundary_sel = st.selectbox("核算边界", boundary_options)
         with c2:
             allocation_sel = st.selectbox("分配方法", allocation_options)
-        c3, c4 = st.columns(2)
-        with c3:
-            source_sel = st.selectbox("行业来源", source_options)
-        with c4:
-            product_sel = st.selectbox("产品类型", product_options)
-        unit_sel = st.selectbox("产品单位", unit_options)
+
+        # 数值特征
+        st.markdown("#### ⚡ 生产消耗数据")
+        material = st.number_input("原材料消耗 (kg)", min_value=0.0, value=1000.0, step=100.0,
+                                   help="生产过程中消耗的原材料质量")
+        electricity = st.number_input("电力消耗 (kWh)", min_value=0.0, value=10000.0, step=1000.0,
+                                      help="生产过程中消耗的电能")
+        heat = st.number_input("热力/燃料消耗", min_value=0.0, value=5000.0, step=500.0,
+                               help="生产过程中消耗的热能或燃料")
+        transport = st.number_input("运输 (tkm)", min_value=0.0, value=50.0, step=10.0,
+                                    help="产品运输的吨公里数")
+
         st.markdown('</div>', unsafe_allow_html=True)
         predict_btn = st.button("🚀 开始预测", type="primary", use_container_width=True)
 
     with cr:
         if predict_btn:
             try:
+                p_code = label_encoders['process_type'].transform([process_sel])[0]
+                e_code = label_encoders['emission_source'].transform([emission_sel])[0]
                 b_code = label_encoders['boundary'].transform([boundary_sel])[0]
                 a_code = label_encoders['allocation'].transform([allocation_sel])[0]
-                s_code = label_encoders['source'].transform([source_sel])[0]
-                p_code = label_encoders['product'].transform([product_sel])[0]
-                u_code = label_encoders['unit'].transform([unit_sel])[0]
 
-                input_core = pd.DataFrame([[material, electricity, heat, transport, b_code, a_code, s_code, p_code, u_code]], columns=feature_names_cn)
+                input_core = pd.DataFrame([[material, electricity, heat, transport, b_code, a_code, p_code, e_code]], columns=feature_names_cn)
                 input_num = input_core[num_cols_cn].copy()
                 input_poly = poly.transform(input_num)
                 input_full = np.hstack([input_core.values, input_poly])
@@ -507,7 +520,7 @@ elif page == "🔍 碳足迹预测":
                 <div style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);padding:24px;border-radius:12px;border-left:5px solid #2e7d32;">
                     <div style="font-size:0.9rem;color:#2e7d32;">预测碳足迹</div>
                     <div style="font-size:2.5rem;font-weight:700;color:#1b5e20;margin:8px 0;">
-                        {pred_ori:.2f} <span style="font-size:1rem;">kgCO₂e / unit</span></div></div>""", unsafe_allow_html=True)
+                        {pred_ori:.2f} <span style="font-size:1rem;">kgCO₂e</span></div></div>""", unsafe_allow_html=True)
 
                 q25, q75 = y.quantile(0.25), y.quantile(0.75)
                 if pred_ori < q25:
@@ -565,15 +578,15 @@ elif page == "🔍 碳足迹预测":
             except Exception as e:
                 st.error(f"预测出错: {e}")
         else:
-            st.markdown("""<div class="info-box"><b>👈 请在左侧输入参数，点击「🚀 开始预测」</b>
+            st.markdown("""<div class="info-box"><b>👈 请在左侧输入生产参数，点击「🚀 开始预测」</b>
                 <br><small>提示：模型基于LCA样本训练，预测结果仅供参考</small></div>""", unsafe_allow_html=True)
 
 # ============================================================
-# 页面4 - 逆向优化
+# 页面3 - 逆向优化
 # ============================================================
 elif page == "🔄 逆向优化":
     st.markdown('<p class="section-title">🔄 逆向参数优化</p>', unsafe_allow_html=True)
-    st.markdown("设定目标碳足迹，系统反推最优参数组合，助力低碳工艺设计")
+    st.markdown("设定目标碳足迹，系统反推最优生产参数组合，助力低碳工艺设计")
     st.markdown("---")
 
     c1, c2 = st.columns([1, 2])
@@ -589,13 +602,14 @@ elif page == "🔄 逆向优化":
         if optimize_btn:
             with st.spinner(f"搜索中 {n_search} 次..."):
                 try:
+                    # 随机搜索参数范围
                     rng_bounds = []
                     for i in range(N_CORE):
                         if i == 0: rng_bounds.append((0, max(X_core[feature_names_cn[i]].max() * 1.2, 5000)))
                         elif i == 1: rng_bounds.append((0, max(X_core[feature_names_cn[i]].max() * 1.2, 50000)))
                         elif i == 2: rng_bounds.append((0, max(X_core[feature_names_cn[i]].max() * 1.2, 10000)))
                         elif i == 3: rng_bounds.append((0, max(100, X_core[feature_names_cn[i]].max() * 1.2)))
-                        else: rng_bounds.append((0, len(label_encoders[['boundary','allocation','source','product','unit'][i-4]].classes_) - 1e-6))
+                        else: rng_bounds.append((0, len(label_encoders[CATEGORICAL_COLS[i-4]].classes_) - 1e-6))
 
                     np.random.seed(42)
                     arr_list = []
@@ -615,20 +629,21 @@ elif page == "🔄 逆向优化":
 
                     result_df = pd.DataFrame(arr, columns=feature_names_cn)
                     result_df['预测碳足迹'] = pred_ori
+
+                    # 反解编码
                     result_df['核算边界'] = result_df[feature_names_cn[4]].apply(lambda x: sd(label_encoders['boundary'], x))
                     result_df['分配方法'] = result_df[feature_names_cn[5]].apply(lambda x: sd(label_encoders['allocation'], x))
-                    result_df['行业来源'] = result_df[feature_names_cn[6]].apply(lambda x: sd(label_encoders['source'], x))
-                    result_df['产品类型'] = result_df[feature_names_cn[7]].apply(lambda x: sd(label_encoders['product'], x))
-                    result_df['产品单位'] = result_df[feature_names_cn[8]].apply(lambda x: sd(label_encoders['unit'], x))
+                    result_df['生产工艺'] = result_df[feature_names_cn[6]].apply(lambda x: sd(label_encoders['process_type'], x))
+                    result_df['碳排放源'] = result_df[feature_names_cn[7]].apply(lambda x: sd(label_encoders['emission_source'], x))
                     result_df['偏差'] = np.abs(result_df['预测碳足迹'] - target_cf)
 
                     top = result_df.nsmallest(10, '偏差').reset_index(drop=True)
 
-                    st.markdown(f"### ✅ 最优参数组合 Top 10（目标 = {target_cf:.0f}）")
-                    show = top[['原材料消耗(kg)','电力消耗(kWh)','热力/燃料消耗','运输(tkm)','核算边界','分配方法','行业来源','产品类型','产品单位','预测碳足迹','偏差']].copy()
+                    st.markdown(f"### ✅ 最优参数组合 Top 10（目标 = {target_cf:.0f} kgCO₂e）")
+                    show = top[['原材料消耗(kg)','电力消耗(kWh)','热力/燃料消耗','运输(tkm)','核算边界','分配方法','生产工艺','碳排放源','预测碳足迹','偏差']].copy()
                     show.index = range(1, 11)
                     show.index.name = 'Rank'
-                    show.columns = ['Material(kg)','Elec(kWh)','Heat','Transport','Boundary','Alloc.','Source','Product','Unit','Pred.CF','Delta']
+                    show.columns = ['Material(kg)','Elec(kWh)','Heat','Transport','Boundary','Alloc.','Process','Emission','Pred.CF','Delta']
                     for c in ['Material(kg)','Heat']: show[c] = show[c].round(1)
                     show['Elec(kWh)'] = show['Elec(kWh)'].round(0).astype(int)
                     show['Transport'] = show['Transport'].round(1)
@@ -659,17 +674,14 @@ elif page == "🔄 逆向优化":
                     st.error(f"优化出错: {e}")
         else:
             st.markdown("""<div class="info-box"><b>👈 左侧设置目标碳足迹 → 点击「开始优化搜索」</b>
-                <br><small>系统在参数空间随机搜索，返回最接近目标值的Top 10组合</small></div>""", unsafe_allow_html=True)
+                <br><small>系统在参数空间随机搜索，返回最接近目标值的Top 10生产参数组合</small></div>""", unsafe_allow_html=True)
 
 # ============================================================
-# 页面5 - SHAP分析
+# 页面4 - SHAP分析
 # ============================================================
 elif page == "📊 SHAP分析":
-    st.markdown('<p class="section-title">📊 SHAP特征重要性</p>', unsafe_allow_html=True)
-    if use_shap:
-        st.markdown("基于SHAP的模型可解释性分析")
-    else:
-        st.markdown("基于模型内置特征重要性（SHAP不可用时自动回退）")
+    st.markdown('<p class="section-title">📊 SHAP特征重要性分析</p>', unsafe_allow_html=True)
+    st.markdown("揭示**生产过程各参数**对碳足迹预测的贡献程度")
     st.markdown("---")
 
     if use_shap and shap_values is not None:
@@ -723,7 +735,7 @@ elif page == "📊 SHAP分析":
 
     else:
         st.markdown("""<div class="info-box"><b>📌 当前使用模型内置特征重要性（SHAP不可用时自动回退）</b><br>
-            <small>功能等价，均能展示各特征对碳足迹预测的贡献程度</small></div>""", unsafe_allow_html=True)
+            <small>功能等价，均能展示生产过程各参数对碳足迹预测的贡献程度</small></div>""", unsafe_allow_html=True)
 
         if core_imp is not None:
             try:
@@ -756,18 +768,18 @@ elif page == "📊 SHAP分析":
                 <p>💡 <b>建议</b>：重点关注核心特征，它们是减排优化的主要着力点。</p></div>""", unsafe_allow_html=True)
 
 # ============================================================
-# 页面6 - 批量预测
+# 页面5 - 批量预测
 # ============================================================
 elif page == "📂 批量预测":
     st.markdown('<p class="section-title">📂 批量数据预测</p>', unsafe_allow_html=True)
-    st.markdown("上传CSV/Excel，批量预测多条产品碳足迹")
+    st.markdown("上传CSV/Excel，批量预测多条生产场景的碳足迹")
     st.markdown("---")
 
     c1, c2 = st.columns([1, 2])
     with c1:
         st.markdown("### 📥 文件上传")
         st.markdown('<div class="nav-box">', unsafe_allow_html=True)
-        st.info("必填列: `material`, `electricity`, `heat`, `transport`, `boundary`, `allocation`, `source`, `product`, `unit`")
+        st.info("必填列: `material`, `electricity`, `heat`, `transport`, `boundary`, `allocation`, `process_type`, `emission_source`")
         uploaded = st.file_uploader("选择文件", type=['csv','xlsx','xls'])
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -777,8 +789,8 @@ elif page == "📂 批量预测":
             'heat': [5000, 2000, 8000], 'transport': [50, 100, 200],
             'boundary': ['摇篮到大门','摇篮到大门','摇篮到大门'],
             'allocation': ['物理法', '质量法', '经济价值法'],
-            'source': ['电解铝_马梦霞','草甘膦_彭子豪','玻璃瓶罐_四川天马'],
-            'product': ['电解铝','草甘膦原药','玻璃瓶罐'], 'unit': ['1 t','1 t','1 t']
+            'process_type': ['电解工艺','化学合成','玻璃制造'],
+            'emission_source': ['电力驱动','燃料燃烧','燃料燃烧']
         })
         st.download_button("📥 CSV模板", data=tpl.to_csv(index=False).encode('utf-8-sig'), file_name='Batch_Template.csv', mime='text/csv', use_container_width=True)
 
@@ -793,7 +805,7 @@ elif page == "📂 批量预测":
                 st.markdown("### 📋 数据预览 (前10条)")
                 st.dataframe(idf.head(10), use_container_width=True)
 
-                req = ['material','electricity','heat','transport','boundary','allocation','source','product','unit']
+                req = ['material','electricity','heat','transport','boundary','allocation','process_type','emission_source']
                 miss = [c for c in req if c not in idf.columns]
                 if miss:
                     st.error(f"❌ 缺少列: {miss}")
@@ -807,11 +819,10 @@ elif page == "📂 批量预测":
                                 except ValueError: return 0
                             idf['boundary_encoded'] = idf['boundary'].apply(lambda x: senc(label_encoders['boundary'], x))
                             idf['allocation_encoded'] = idf['allocation'].apply(lambda x: senc(label_encoders['allocation'], x))
-                            idf['source_encoded'] = idf['source'].apply(lambda x: senc(label_encoders['source'], x))
-                            idf['product_encoded'] = idf['product'].apply(lambda x: senc(label_encoders['product'], x))
-                            idf['unit_encoded'] = idf['unit'].apply(lambda x: senc(label_encoders['unit'], x))
+                            idf['process_type_encoded'] = idf['process_type'].apply(lambda x: senc(label_encoders['process_type'], x))
+                            idf['emission_source_encoded'] = idf['emission_source'].apply(lambda x: senc(label_encoders['emission_source'], x))
 
-                            BX = idf[['material','electricity','heat','transport','boundary_encoded','allocation_encoded','source_encoded','product_encoded','unit_encoded']].copy()
+                            BX = idf[['material','electricity','heat','transport','boundary_encoded','allocation_encoded','process_type_encoded','emission_source_encoded']].copy()
                             BX.columns = feature_names_cn
                             BX_num = BX[num_cols_cn].copy()
                             BX_poly = poly.transform(BX_num)
@@ -821,8 +832,8 @@ elif page == "📂 批量预测":
                             idf['预测碳足迹(kgCO₂e)'] = np.round(preds_o, 2)
 
                             st.markdown("### ✅ 预测结果")
-                            rdf = idf[['material','electricity','heat','transport','boundary','allocation','source','product','unit','预测碳足迹(kgCO₂e)']].copy()
-                            rdf.columns = ['Material','Elec','Heat','Transport','Boundary','Alloc.','Source','Product','Unit','Pred.CF']
+                            rdf = idf[['material','electricity','heat','transport','boundary','allocation','process_type','emission_source','预测碳足迹(kgCO₂e)']].copy()
+                            rdf.columns = ['Material','Elec','Heat','Transport','Boundary','Alloc.','Process','Emission','Pred.CF']
                             st.dataframe(rdf, use_container_width=True)
 
                             st.download_button("📥 下载结果", data=rdf.to_csv(index=False).encode('utf-8-sig'), file_name='Batch_Prediction.csv', mime='text/csv')
@@ -832,28 +843,8 @@ elif page == "📂 批量预测":
                             with a2: st.markdown(f'<div class="metric-card"><div class="metric-value">{rdf["Pred.CF"].mean():.1f}</div><div class="metric-label">平均</div></div>', unsafe_allow_html=True)
                             with a3: st.markdown(f'<div class="metric-card"><div class="metric-value">{rdf["Pred.CF"].min():.0f}~{rdf["Pred.CF"].max():.0f}</div><div class="metric-label">范围</div></div>', unsafe_allow_html=True)
 
-                            try:
-                                v1, v2 = st.columns(2)
-                                with v1:
-                                    fig, ax = plt.subplots(figsize=(6, 4))
-                                    ax.hist(rdf['Pred.CF'], bins=min(20, len(rdf)), color='#3949ab', edgecolor='white', alpha=0.85)
-                                    ax.set_xlabel(T('碳足迹','Carbon Footprint')); ax.set_ylabel(T('频数','Frequency'))
-                                    ax.set_title(T('碳足迹分布','CF Distribution'), fontsize=12, fontweight='bold')
-                                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                                with v2:
-                                    if len(rdf) <= 30:
-                                        fig, ax = plt.subplots(figsize=(6, 4))
-                                        labels = [f"#{i+1}" for i in range(len(rdf))]
-                                        ax.bar(labels, rdf['Pred.CF'], color='#1a237e', alpha=0.8)
-                                        ax.set_xlabel(T('样本','Sample')); ax.set_ylabel(T('碳足迹','CF'))
-                                        ax.set_title(T('各样本碳足迹','Per-sample CF'), fontsize=12, fontweight='bold')
-                                        plt.xticks(rotation=45); plt.tight_layout(); st.pyplot(fig); plt.close()
-                                    else:
-                                        st.info("样本数>30，跳过条形图")
-                            except Exception as e:
-                                st.info(f"图表跳过: {e}")
             except Exception as e:
-                st.error(f"❌ 错误: {e}")
+                st.error(f"文件处理出错: {e}")
         else:
-            st.markdown("""<div class="info-box"><b>👈 上传文件后点击「执行预测」</b>
-                <br><small>支持 CSV (.csv) 与 Excel (.xlsx/.xls)</small></div>""", unsafe_allow_html=True)
+            st.markdown("""<div class="info-box"><b>👈 在左侧上传文件，点击「执行预测」</b>
+                <br><small>支持 CSV / Excel 格式，需包含必要的生产过程参数列</small></div>""", unsafe_allow_html=True)
