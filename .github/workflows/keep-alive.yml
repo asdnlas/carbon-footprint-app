@@ -1,0 +1,50 @@
+name: Keep Streamlit Awake
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Playwright
+        run: |
+          pip install --quiet playwright
+          playwright install --with-deps chromium
+      
+      - name: Wake Streamlit app
+        env:
+          APP_URL: 'https://carbon-footprint-app-mjuigu9iecpaijfebt24ht.streamlit.app'
+        run: |
+          python <<'PYEOF'
+          import os, time
+          from playwright.sync_api import sync_playwright
+          url = os.environ["APP_URL"].rstrip("/")
+          print(f"Waking {url}")
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              page = browser.new_page()
+              page.goto(url, timeout=60000)
+              time.sleep(3)
+              try:
+                  btn = page.get_by_text("Yes, get this app back up!")
+                  if btn.count() > 0:
+                      btn.first.click()
+                      print("Clicked wake-up button")
+                      time.sleep(45)
+                  else:
+                      print("App already awake")
+                      time.sleep(10)
+              except Exception as e:
+                  print(f"Button check: {e}")
+                  time.sleep(15)
+              browser.close()
+          print("Done")
+          PYEOF
